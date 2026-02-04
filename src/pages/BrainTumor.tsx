@@ -6,33 +6,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import MainLayout from '@/components/layout/MainLayout';
 import brainScanImage from '@/assets/brain-scan.jpg';
+import { predictBrainTumor, BrainTumorResult } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 interface FormData {
   age: string;
   pregnancyWeek: string;
-  bloodPressure: string;
-  headacheFrequency: string;
-  visionChanges: string;
-  nausea: string;
-  previousConditions: string;
+  symptoms: string;
+  medicalHistory: string;
 }
 
 export default function BrainTumor() {
   const [formData, setFormData] = useState<FormData>({
     age: '',
     pregnancyWeek: '',
-    bloodPressure: '',
-    headacheFrequency: '',
-    visionChanges: '',
-    nausea: '',
-    previousConditions: '',
+    symptoms: '',
+    medicalHistory: '',
   });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<{ status: string; confidence: number; details: string } | null>(null);
+  const [result, setResult] = useState<BrainTumorResult | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const { toast } = useToast();
 
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -41,6 +40,7 @@ export default function BrainTumor() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setUploadedImage(reader.result as string);
@@ -50,32 +50,45 @@ export default function BrainTumor() {
   };
 
   const handleAnalyze = async () => {
+    if (!imageFile) {
+      toast({
+        title: "Image Required",
+        description: "Please upload an MRI/CT scan image for analysis.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsAnalyzing(true);
     setResult(null);
 
-    // Simulate AI analysis
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    try {
+      const response = await predictBrainTumor({
+        age: parseInt(formData.age) || 0,
+        gestationalWeek: parseInt(formData.pregnancyWeek) || 0,
+        symptoms: formData.symptoms,
+        medicalHistory: formData.medicalHistory,
+        image: imageFile,
+      });
 
-    // Mock result based on form data
-    const riskScore = Math.random();
-    if (riskScore < 0.7) {
-      setResult({
-        status: 'No Tumor Detected',
-        confidence: 95 + Math.random() * 5,
-        details: 'The AI analysis of the provided data indicates no signs of brain tumor. All neurological indicators appear within normal range for your pregnancy stage.',
+      setResult(response);
+      
+      toast({
+        title: "Analysis Complete",
+        description: `Prediction: ${response.prediction}`,
       });
-    } else {
-      setResult({
-        status: 'Further Consultation Recommended',
-        confidence: 75 + Math.random() * 15,
-        details: 'Based on the provided information, we recommend scheduling a consultation with a neurologist for additional tests. This is a precautionary measure.',
+    } catch (error) {
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyze image. Make sure the backend is running.",
+        variant: "destructive",
       });
+    } finally {
+      setIsAnalyzing(false);
     }
-
-    setIsAnalyzing(false);
   };
 
-  const isFormValid = Object.values(formData).every((value) => value !== '');
+  const isFormValid = formData.age !== '' && formData.pregnancyWeek !== '' && imageFile !== null;
 
   return (
     <MainLayout>
@@ -86,7 +99,7 @@ export default function BrainTumor() {
           transition={{ duration: 0.6 }}
         >
           <h1 className="text-3xl font-display font-bold text-foreground mb-2">Brain Tumor Prediction</h1>
-          <p className="text-muted-foreground">AI-powered analysis for pregnant women</p>
+          <p className="text-muted-foreground">AI-powered MRI analysis for pregnant women (CNN Model)</p>
         </motion.div>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -104,12 +117,12 @@ export default function BrainTumor() {
                   </div>
                   Patient Information
                 </CardTitle>
-                <CardDescription>Enter your health data for AI analysis</CardDescription>
+                <CardDescription>Enter your health data and upload MRI scan for AI analysis</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="age">Age</Label>
+                    <Label htmlFor="age">Age *</Label>
                     <Input
                       id="age"
                       type="number"
@@ -120,7 +133,7 @@ export default function BrainTumor() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="pregnancyWeek">Pregnancy Week</Label>
+                    <Label htmlFor="pregnancyWeek">Pregnancy Week *</Label>
                     <Input
                       id="pregnancyWeek"
                       type="number"
@@ -133,91 +146,30 @@ export default function BrainTumor() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="bloodPressure">Blood Pressure</Label>
-                  <Input
-                    id="bloodPressure"
-                    placeholder="e.g., 120/80"
-                    value={formData.bloodPressure}
-                    onChange={(e) => handleInputChange('bloodPressure', e.target.value)}
-                    className="bg-muted/50"
+                  <Label htmlFor="symptoms">Symptoms</Label>
+                  <Textarea
+                    id="symptoms"
+                    placeholder="Describe any symptoms (headaches, vision changes, etc.)"
+                    value={formData.symptoms}
+                    onChange={(e) => handleInputChange('symptoms', e.target.value)}
+                    className="bg-muted/50 min-h-[80px]"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Headache Frequency</Label>
-                  <Select
-                    value={formData.headacheFrequency}
-                    onValueChange={(value) => handleInputChange('headacheFrequency', value)}
-                  >
-                    <SelectTrigger className="bg-muted/50">
-                      <SelectValue placeholder="Select frequency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="occasional">Occasional</SelectItem>
-                      <SelectItem value="frequent">Frequent</SelectItem>
-                      <SelectItem value="severe">Severe/Daily</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Vision Changes</Label>
-                  <Select
-                    value={formData.visionChanges}
-                    onValueChange={(value) => handleInputChange('visionChanges', value)}
-                  >
-                    <SelectTrigger className="bg-muted/50">
-                      <SelectValue placeholder="Select option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="no">No changes</SelectItem>
-                      <SelectItem value="mild">Mild blurriness</SelectItem>
-                      <SelectItem value="moderate">Moderate changes</SelectItem>
-                      <SelectItem value="severe">Severe changes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Nausea Level</Label>
-                  <Select
-                    value={formData.nausea}
-                    onValueChange={(value) => handleInputChange('nausea', value)}
-                  >
-                    <SelectTrigger className="bg-muted/50">
-                      <SelectValue placeholder="Select level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="mild">Mild</SelectItem>
-                      <SelectItem value="moderate">Moderate</SelectItem>
-                      <SelectItem value="severe">Severe</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Previous Neurological Conditions</Label>
-                  <Select
-                    value={formData.previousConditions}
-                    onValueChange={(value) => handleInputChange('previousConditions', value)}
-                  >
-                    <SelectTrigger className="bg-muted/50">
-                      <SelectValue placeholder="Select option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="migraine">Migraine history</SelectItem>
-                      <SelectItem value="seizure">Seizure history</SelectItem>
-                      <SelectItem value="other">Other conditions</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="medicalHistory">Medical History</Label>
+                  <Textarea
+                    id="medicalHistory"
+                    placeholder="Any relevant medical history"
+                    value={formData.medicalHistory}
+                    onChange={(e) => handleInputChange('medicalHistory', e.target.value)}
+                    className="bg-muted/50 min-h-[80px]"
+                  />
                 </div>
 
                 {/* Image Upload */}
                 <div className="space-y-2">
-                  <Label>Upload MRI/CT Scan (Optional)</Label>
+                  <Label>Upload MRI/CT Scan *</Label>
                   <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary transition-colors">
                     <input
                       type="file"
@@ -232,7 +184,8 @@ export default function BrainTumor() {
                       ) : (
                         <div className="space-y-2">
                           <Upload className="w-10 h-10 mx-auto text-muted-foreground" />
-                          <p className="text-muted-foreground">Click to upload scan image</p>
+                          <p className="text-muted-foreground">Click to upload MRI/CT scan image</p>
+                          <p className="text-xs text-muted-foreground">PNG, JPG, JPEG supported</p>
                         </div>
                       )}
                     </label>
@@ -248,12 +201,12 @@ export default function BrainTumor() {
                   {isAnalyzing ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Analyzing...
+                      Analyzing MRI Image...
                     </>
                   ) : (
                     <>
                       <Brain className="w-5 h-5 mr-2" />
-                      Analyze Data
+                      Analyze Scan
                     </>
                   )}
                 </Button>
@@ -278,7 +231,7 @@ export default function BrainTumor() {
               <Card className="glass-card border-none">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-foreground">
-                    {result.status === 'No Tumor Detected' ? (
+                    {!result.has_tumor ? (
                       <CheckCircle className="w-6 h-6 text-success" />
                     ) : (
                       <AlertCircle className="w-6 h-6 text-warning" />
@@ -288,20 +241,50 @@ export default function BrainTumor() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className={`p-4 rounded-xl ${
-                    result.status === 'No Tumor Detected' ? 'bg-success/10' : 'bg-warning/10'
+                    !result.has_tumor ? 'bg-success/10' : 'bg-warning/10'
                   }`}>
                     <p className={`text-lg font-semibold ${
-                      result.status === 'No Tumor Detected' ? 'text-success' : 'text-warning'
+                      !result.has_tumor ? 'text-success' : 'text-warning'
                     }`}>
-                      {result.status}
+                      {result.prediction}
                     </p>
+                    {result.tumor_type && (
+                      <p className="text-sm opacity-80">Type: {result.tumor_type}</p>
+                    )}
                   </div>
+                  
                   <div>
                     <p className="text-sm text-muted-foreground mb-2">Confidence Level</p>
                     <Progress value={result.confidence} className="h-3" />
                     <p className="text-right text-sm font-medium mt-1 text-foreground">{result.confidence.toFixed(1)}%</p>
                   </div>
-                  <p className="text-muted-foreground">{result.details}</p>
+
+                  {/* Pregnancy Risk */}
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <p className="font-medium text-foreground">Pregnancy Risk Level: {result.pregnancy_risk_level}</p>
+                    {result.pregnancy_risk_factors.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {result.pregnancy_risk_factors.map((factor, idx) => (
+                          <li key={idx} className="text-sm text-muted-foreground">• {factor}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Recommendations */}
+                  <div>
+                    <p className="font-medium text-foreground mb-2">Recommendations:</p>
+                    <ul className="space-y-2">
+                      {result.recommendations.map((rec, index) => (
+                        <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <CheckCircle className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground italic">{result.disclaimer}</p>
                 </CardContent>
               </Card>
             ) : (
@@ -312,8 +295,8 @@ export default function BrainTumor() {
                     <div>
                       <p className="font-medium text-foreground">How it works</p>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Fill in your health information and our AI will analyze the data to provide 
-                        a preliminary assessment. This is not a substitute for professional medical advice.
+                        Upload an MRI/CT scan image and fill in your health information. Our AI (CNN model) will analyze the image 
+                        and provide a preliminary assessment. This is not a substitute for professional medical advice.
                       </p>
                     </div>
                   </div>

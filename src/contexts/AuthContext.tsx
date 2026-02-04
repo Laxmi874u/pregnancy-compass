@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import * as api from '@/lib/api';
 
 interface User {
   id: string;
@@ -13,82 +14,101 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ error?: string }>;
   signup: (email: string, password: string, name: string) => Promise<{ error?: string }>;
   logout: () => void;
+  token: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Simulated user storage (in production, this would be Supabase)
 const STORAGE_KEY = 'pregai_user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for stored user on mount
+    // Check for stored user and token on mount
     const storedUser = localStorage.getItem(STORAGE_KEY);
-    if (storedUser) {
+    const storedToken = api.getAuthToken();
+    
+    if (storedUser && storedToken) {
       setUser(JSON.parse(storedUser));
+      setToken(storedToken);
+      
+      // Verify token is still valid by fetching current user
+      api.getCurrentUser()
+        .then(response => {
+          const userData: User = {
+            id: response.user.id.toString(),
+            email: response.user.email,
+            name: response.user.name,
+            avatarUrl: response.user.avatar_url,
+          };
+          setUser(userData);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+        })
+        .catch(() => {
+          // Token invalid, clear auth state
+          logout();
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<{ error?: string }> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    if (!email || !password) {
-      return { error: 'Please enter email and password' };
+    try {
+      const response = await api.login(email, password);
+      
+      const userData: User = {
+        id: response.user.id.toString(),
+        email: response.user.email,
+        name: response.user.name,
+        avatarUrl: response.user.avatar_url,
+      };
+      
+      setUser(userData);
+      setToken(response.access_token);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+      
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Login failed' };
     }
-    
-    // Simple validation (in production, this would be actual auth)
-    if (password.length < 6) {
-      return { error: 'Invalid credentials' };
-    }
-
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      email,
-      name: email.split('@')[0],
-      avatarUrl: undefined,
-    };
-    
-    setUser(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-    return {};
   };
 
   const signup = async (email: string, password: string, name: string): Promise<{ error?: string }> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    if (!email || !password || !name) {
-      return { error: 'Please fill in all fields' };
+    try {
+      const response = await api.signup(email, password, name);
+      
+      const userData: User = {
+        id: response.user.id.toString(),
+        email: response.user.email,
+        name: response.user.name,
+      };
+      
+      setUser(userData);
+      setToken(response.access_token);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+      
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Signup failed' };
     }
-    
-    if (password.length < 6) {
-      return { error: 'Password must be at least 6 characters' };
-    }
-
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      email,
-      name,
-      avatarUrl: undefined,
-    };
-    
-    setUser(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-    return {};
   };
 
   const logout = () => {
     setUser(null);
+    setToken(null);
+    api.logout();
     localStorage.removeItem(STORAGE_KEY);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, token }}>
       {children}
     </AuthContext.Provider>
   );

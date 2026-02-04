@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import MainLayout from '@/components/layout/MainLayout';
 import fetalImage from '@/assets/fetal-health.jpg';
+import { predictFetalHealth, FetalHealthResult } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 interface CTGData {
   baselineValue: string;
@@ -84,12 +86,8 @@ const fieldLabels: Record<keyof CTGData, string> = {
 export default function FetalHealth() {
   const [formData, setFormData] = useState<CTGData>(initialData);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<{
-    classification: 'Normal' | 'Suspect' | 'Pathological';
-    confidence: number;
-    details: string;
-    recommendations: string[];
-  } | null>(null);
+  const [result, setResult] = useState<FetalHealthResult | null>(null);
+  const { toast } = useToast();
 
   const handleInputChange = (field: keyof CTGData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -99,75 +97,73 @@ export default function FetalHealth() {
     setIsAnalyzing(true);
     setResult(null);
 
-    // Simulate AI analysis
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    try {
+      // Map form data to API format
+      const apiInput = {
+        baseline_value: parseFloat(formData.baselineValue) || 0,
+        accelerations: parseFloat(formData.accelerations) || 0,
+        fetal_movement: parseFloat(formData.fetalMovement) || 0,
+        uterine_contractions: parseFloat(formData.uterineContractions) || 0,
+        light_decelerations: parseFloat(formData.lightDecelerations) || 0,
+        severe_decelerations: parseFloat(formData.severeDecelerations) || 0,
+        prolongued_decelerations: parseFloat(formData.prolonguedDecelerations) || 0,
+        abnormal_short_term_variability: parseFloat(formData.abnormalShortTermVariability) || 0,
+        mean_value_of_short_term_variability: parseFloat(formData.meanShortTermVariability) || 0,
+        percentage_of_time_with_abnormal_long_term_variability: parseFloat(formData.abnormalLongTermVariability) || 0,
+        mean_value_of_long_term_variability: parseFloat(formData.meanLongTermVariability) || 0,
+        histogram_width: parseFloat(formData.histogramWidth) || 0,
+        histogram_min: parseFloat(formData.histogramMin) || 0,
+        histogram_max: parseFloat(formData.histogramMax) || 0,
+        histogram_number_of_peaks: parseFloat(formData.histogramPeaks) || 0,
+        histogram_number_of_zeroes: parseFloat(formData.histogramZeros) || 0,
+        histogram_mode: parseFloat(formData.histogramMode) || 0,
+        histogram_mean: parseFloat(formData.histogramMean) || 0,
+        histogram_median: parseFloat(formData.histogramMedian) || 0,
+        histogram_variance: parseFloat(formData.histogramVariance) || 0,
+        histogram_tendency: parseFloat(formData.histogramTendency) || 0,
+      };
 
-    // Mock result based on form data
-    const randomValue = Math.random();
-    let classification: 'Normal' | 'Suspect' | 'Pathological';
-    let confidence: number;
-    let details: string;
-    let recommendations: string[];
-
-    if (randomValue < 0.7) {
-      classification = 'Normal';
-      confidence = 92 + Math.random() * 8;
-      details = 'The cardiotocography (CTG) analysis indicates that the fetal health parameters are within normal range. The baseline fetal heart rate, accelerations, and variability patterns suggest healthy fetal well-being.';
-      recommendations = [
-        'Continue regular prenatal checkups',
-        'Maintain healthy diet and hydration',
-        'Monitor daily fetal movements',
-        'Follow up in 2-4 weeks',
-      ];
-    } else if (randomValue < 0.9) {
-      classification = 'Suspect';
-      confidence = 75 + Math.random() * 15;
-      details = 'Some CTG parameters show borderline values that warrant closer monitoring. This does not necessarily indicate a problem but suggests the need for additional observation.';
-      recommendations = [
-        'Schedule follow-up CTG within 1 week',
-        'Monitor fetal movements closely',
-        'Stay hydrated and well-rested',
-        'Contact healthcare provider if concerns arise',
-      ];
-    } else {
-      classification = 'Pathological';
-      confidence = 80 + Math.random() * 15;
-      details = 'The CTG analysis shows some concerning patterns that require immediate medical attention. Please consult with your healthcare provider promptly for further evaluation.';
-      recommendations = [
-        'Contact your healthcare provider immediately',
-        'Prepare for possible hospital visit',
-        'Document any symptoms or changes',
-        'Do not delay seeking medical care',
-      ];
+      const response = await predictFetalHealth(apiInput);
+      setResult(response);
+      
+      toast({
+        title: "Analysis Complete",
+        description: `Fetal health prediction: ${response.prediction}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyze CTG data. Make sure the backend is running.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
     }
-
-    setResult({ classification, confidence, details, recommendations });
-    setIsAnalyzing(false);
   };
 
   const loadSampleData = () => {
     setFormData({
       baselineValue: '120',
-      accelerations: '3',
-      fetalMovement: '10',
-      uterineContractions: '2',
-      lightDecelerations: '0',
-      severeDecelerations: '0',
-      prolonguedDecelerations: '0',
-      abnormalShortTermVariability: '12',
-      meanShortTermVariability: '0.5',
-      abnormalLongTermVariability: '8',
-      meanLongTermVariability: '12',
-      histogramWidth: '70',
-      histogramMin: '62',
-      histogramMax: '126',
-      histogramPeaks: '2',
-      histogramZeros: '0',
-      histogramMode: '120',
-      histogramMean: '137',
-      histogramMedian: '121',
-      histogramVariance: '73',
-      histogramTendency: '1',
+      accelerations: '0.003',
+      fetalMovement: '0.0',
+      uterineContractions: '0.006',
+      lightDecelerations: '0.003',
+      severeDecelerations: '0.0',
+      prolonguedDecelerations: '0.0',
+      abnormalShortTermVariability: '17',
+      meanShortTermVariability: '2.1',
+      abnormalLongTermVariability: '0',
+      meanLongTermVariability: '10.4',
+      histogramWidth: '130',
+      histogramMin: '68',
+      histogramMax: '198',
+      histogramPeaks: '6',
+      histogramZeros: '1',
+      histogramMode: '141',
+      histogramMean: '136',
+      histogramMedian: '140',
+      histogramVariance: '12',
+      histogramTendency: '0',
     });
   };
 
@@ -198,7 +194,7 @@ export default function FetalHealth() {
         >
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground mb-2">Fetal Health Prediction</h1>
-            <p className="text-muted-foreground">CTG data analysis using machine learning</p>
+            <p className="text-muted-foreground">CTG data analysis using machine learning (Random Forest)</p>
           </div>
           <Button variant="secondary" onClick={loadSampleData}>
             Load Sample Data
@@ -234,6 +230,7 @@ export default function FetalHealth() {
                       <Input
                         id={field}
                         type="number"
+                        step="any"
                         placeholder="Enter value"
                         value={formData[field]}
                         onChange={(e) => handleInputChange(field, e.target.value)}
@@ -282,24 +279,35 @@ export default function FetalHealth() {
               <Card className="glass-card border-none">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-foreground">
-                    {result.classification === 'Normal' ? (
+                    {result.prediction === 'Normal' ? (
                       <CheckCircle className="w-6 h-6 text-success" />
                     ) : (
-                      <AlertCircle className={`w-6 h-6 ${result.classification === 'Pathological' ? 'text-destructive' : 'text-warning'}`} />
+                      <AlertCircle className={`w-6 h-6 ${result.prediction === 'Pathological' ? 'text-destructive' : 'text-warning'}`} />
                     )}
                     Analysis Result
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className={`p-4 rounded-xl ${getClassificationColor(result.classification)}`}>
-                    <p className="text-lg font-semibold">{result.classification}</p>
+                  <div className={`p-4 rounded-xl ${getClassificationColor(result.prediction)}`}>
+                    <p className="text-lg font-semibold">{result.prediction}</p>
+                    <p className="text-sm opacity-80">Risk Level: {result.risk_level}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-2">Confidence Level</p>
                     <Progress value={result.confidence} className="h-3" />
                     <p className="text-right text-sm font-medium mt-1 text-foreground">{result.confidence.toFixed(1)}%</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">{result.details}</p>
+                  
+                  {/* Analysis Details */}
+                  <div className="space-y-2">
+                    <p className="font-medium text-foreground">Analysis:</p>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>• {result.analysis.heart_rate_assessment}</p>
+                      <p>• {result.analysis.variability_assessment}</p>
+                      <p>• {result.analysis.deceleration_assessment}</p>
+                    </div>
+                  </div>
+                  
                   <div>
                     <p className="font-medium text-foreground mb-2">Recommendations:</p>
                     <ul className="space-y-2">
@@ -311,6 +319,8 @@ export default function FetalHealth() {
                       ))}
                     </ul>
                   </div>
+                  
+                  <p className="text-xs text-muted-foreground italic">{result.disclaimer}</p>
                 </CardContent>
               </Card>
             ) : (
