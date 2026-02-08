@@ -80,6 +80,13 @@ class FetalHealthPredictor:
             # Load and prepare data
             df = pd.read_csv(data_path)
             
+            # Map CSV column names to expected feature names (handle space vs underscore)
+            column_mapping = {
+                'baseline value': 'baseline_value',
+                'prolongued_decelerations': 'prolongued_decelerations'
+            }
+            df = df.rename(columns=column_mapping)
+            
             # Features and target
             X = df[self.feature_names].values
             y = df['fetal_health'].values
